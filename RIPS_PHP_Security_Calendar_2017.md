@@ -264,3 +264,28 @@ class LanguageManager
 ```
 
 This challenge contains a file inclusion vulnerability that can allow an attacker to execute arbitrary code on the server or to leak sensitive files. The bug is in the sanitization function in line 18. The replacement of the ../ string is not executed recursively. This allows the attacker to simply use the character sequence ....// or ..././ that after replacement will end in ../ again. Thus, changing the path to the included language file via path traversal is possible. For example, the system's passwd file can be leaked by setting the following payload in the Accept-Language HTTP request header: .//....//....//etc/passwd.
+
+
+### Day 10 - Anticipation
+Can you spot the vulnerability?
+
+```php
+extract($_POST);
+
+function goAway() {
+    error_log("Hacking attempt.");
+    header('Location: /error/');
+}
+
+if (!isset($pi) || !is_numeric($pi)) {
+    goAway();
+}
+
+if (!assert("(int)$pi == 3")) {
+    echo "This is not pi.";
+} else {
+    echo "This might be pi.";
+}
+```
+
+This challenge contains a code injection vulnerability in line 12 that can be used by an attacker to execute arbitrary PHP code on the web server. The operation assert() evaluates PHP code and it contains user input. In line 1, all POST parameters are instantiated as global variables by PHP's built-in function extract(). This can lead to severe problems itself but in this challenge it is only used for a variety of sources. It enables the attacker to set the $pi variable directly via POST Parameter. In line 8 there is a check to verify if the input is numeric and if not the user is redirected to an error page via the goAway() function. However, after the redirect in line 5 the PHP script continues running because there is no exit() call. Thus, user provided PHP code in the pi parameter is always executed, e.g. pi=phpinfo().
