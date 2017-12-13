@@ -363,3 +363,49 @@ echo "<a href='/images/size.php?" .
 ```
 
 There is a cross-site scripting vulnerability in line 13. This bug depends on the fact that the keys of the $_GET array (the GET parameter names) are not sufficiently sanitized in the code. Both the keys and the sanitized GET values are passed to the href attribute of the <a> tag as a concatenated string. The sanitizer htmlentities() is used, however, single quotes are not affected by default by this built-in function. Hence, an attacker is able to perform an XSS attack against the user, for example using the following query parameter that breaks the href attribute and appends an eventhandler with JavaScript code: /?a'onclick%3dalert(1)%2f%2f=c. Note that the payload is within the parameter name, not the parameter value.
+
+
+### Day 13 - Turkey Baster
+Can you spot the vulnerability?
+
+```php
+class LoginManager {
+    private $em;
+    private $user;
+    private $password;
+
+    public function __construct($user, $password) {
+        $this->em = DoctrineManager::getEntityManager();
+        $this->user = $user;
+        $this->password = $password;
+    }
+
+    public function isValid() {
+        $user = $this->sanitizeInput($this->user);
+        $pass = $this->sanitizeInput($this->password);
+        
+        $queryBuilder = $this->em->createQueryBuilder()
+            ->select("COUNT(p)")
+            ->from("User", "u")
+            ->where("user = '$user' AND password = '$pass'");
+        $query = $queryBuilder->getQuery();
+        return boolval($query->getSingleScalarResult());
+    }
+	
+    public function sanitizeInput($input, $length = 20) {
+        $input = addslashes($input);
+        if (strlen($input) > $length) {
+            $input = substr($input, 0, $length);
+        }
+        return $input;
+    }
+}
+
+$auth = new LoginManager($_POST['user'], $_POST['passwd']);
+if (!$auth->isValid()) {
+    exit;
+}
+```
+
+Today's challenge contains a DQL (Doctrine Query Language) injection vulnerability in line 19. A DQL injection is similar to a SQL injection but more limited, nonetheless the where() method of Doctrine is vulnerable. In line 13 and 14 sanitization is added to the input, however, the sanitizeInput() method has a bug. First, it uses addslashes() for escaping relevant characters by adding a backslash \ infront of them. In this case if we pass a \ as input, it get escaped to \\. But then, the substr() function is used to truncate the escaped string. This enables an attacker to send a string that is long enough that the escaped backslash is cut off and we are left with a single \ at the end of the string. This will then break the WHERE statement and allows the injection of own DQL syntax, for example the condition OR 1=1 that is always true and bypasses the authentication: user=1234567890123456789\&passwd=%20OR%201=1-. The resulting WHERE statement will look like user = '1234567890123456789\' AND password = ' OR 1=1-' in DQL. Note how the backslash confuses the quotes and allows to inject DQL into the password value. The resulting query does not look valid because of the trailing slash. Fortunately, Doctrine closes the last single quote on its own, so the resulting query looks like OR 1=1-''.
+To avoid DQL injections always use bound parameters for dynamic conditions. Never try to secure a DQL query with addslashes() or similar functions. Additionally, the password should be stored hashed in the database, for example in the BCrypt format.
