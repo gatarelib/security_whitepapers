@@ -478,3 +478,49 @@ if ($_GET['redirect']) {
 
 This challenge contains an open redirect vulnerability in line 6. The code takes the input from the super global $_SERVER[‘PHP_SELF’] and splits it at the slash character (line 10). Then the last part is taken and used to build the new URL that is passed into the header() function. An attacker is able to inject his own URL by using url-encoded characters that are decoded in line 5. A possible payload could look like /index.php/http:%252f%252fwww.domain.com?redirect=1.
 This bug allows an attacker to redirect the user from the original site to a site of the attackers will. The attacker then could do phishing, for example he could present a forged login screen to grab the credentials of the user for the original site.
+
+
+### Day 16 - Poem
+Can you spot the vulnerability?
+
+```php
+class FTP {
+    public $sock;
+
+    public function __construct($host, $port, $user, $pass) {
+        $this->sock = fsockopen($host, $port);
+
+        $this->login($user, $pass);
+        $this->cleanInput();
+        $this->mode($_REQUEST['mode']);
+        $this->send($_FILES['file']);
+    }
+
+    private function cleanInput() {
+        array_filter($_GET, 'intval');
+        array_filter($_POST, 'intval');
+        array_filter($_COOKIE, 'intval');
+    }
+
+    public function login($username, $password) {
+        fwrite($this->sock, "USER " . $username);
+        fwrite($this->sock, "PASS " . $password);
+    }
+
+    public function mode($mode) {
+        if ($mode == 1 || $mode == 2 || $mode == 3) {
+            fputs($this->sock, "MODE $mode");
+        }
+    }
+
+    public function send($data) {
+        fputs($this->sock, $data);
+    }
+}
+
+new FTP('localhost', 21, 'user', 'password');
+```
+
+This challenge contains two bugs that can be used together to inject data into the open FTP connection. The first bug is the usage of $_REQUEST in line 9 while only sanitizing $_GET and $_POST in lines 14 to 16. $_REQUEST is the combination of $_GET, $_POST, and $_COOKIE but it is only a copy of the values, not a reference. Therefore the sanitization of $_GET, $_POST, and $_COOKIE alone is not sufficient. A real world example of a vulnerability that is caused by a similar confusion can be found in our blog.
+
+The second bug is the usage of the type-unsafe comparison == instead of === in line 25. This enables an attacker to inject and execute new commands in the existing connection, for example a delete command with the query string ```?mode=1%0a%0dDELETE%20test.file```
