@@ -524,3 +524,50 @@ new FTP('localhost', 21, 'user', 'password');
 This challenge contains two bugs that can be used together to inject data into the open FTP connection. The first bug is the usage of $_REQUEST in line 9 while only sanitizing $_GET and $_POST in lines 14 to 16. $_REQUEST is the combination of $_GET, $_POST, and $_COOKIE but it is only a copy of the values, not a reference. Therefore the sanitization of $_GET, $_POST, and $_COOKIE alone is not sufficient. A real world example of a vulnerability that is caused by a similar confusion can be found in our blog.
 
 The second bug is the usage of the type-unsafe comparison == instead of === in line 25. This enables an attacker to inject and execute new commands in the existing connection, for example a delete command with the query string ```?mode=1%0a%0dDELETE%20test.file```
+
+
+### Day 17 - Mistletoe
+Can you spot the vulnerability?
+
+ 
+```php
+class RealSecureLoginManager {
+    private $em;
+    private $user;
+    private $password;
+
+    public function __construct($user, $password) {
+        $this->em = DoctrineManager::getEntityManager();
+        $this->user = $user;
+        $this->password = $password;
+    }
+
+    public function isValid() {
+        $pass = md5($this->password, true);
+        $user = $this->sanitizeInput($this->user);
+
+        $queryBuilder = $this->em->createQueryBuilder()
+            ->select("COUNT(p)")
+            ->from("User", "u")
+            ->where("password = '$pass' AND user = '$user'");
+        $query = $queryBuilder->getQuery();
+        return boolval($query->getSingleScalarResult());
+    }
+
+    public function sanitizeInput($input) {
+        return addslashes($input);
+    }
+}
+
+$auth = new RealSecureLoginManager(
+    $_POST['user'],
+    $_POST['passwd']
+);
+if (!$auth->isValid()) {
+    exit;
+}
+```
+
+This challenge is supposed to be a fixed version of day 13 but it introduces new vulnerabilities instead. The author tried to fix the DQL injection by applying addslashes() without substr() on the user name, and by hashing the password in line 13 using md5(). Besides the fact that md5 should not be used to hash passwords and that password hashes should not be compared this way, the second parameter is set to true. This returns the hash in binary format. The binary hash can contain ASCII characters that are interpreted by Doctrine. In this case an attacker could use the value 128 as the password, resulting in v�an���l���q��\ as hash. With the backslash at the end the single quote gets escaped leading to an injection. A possible payload could be ?user=%20OR%201=1-&passwd=128.
+
+To avoid DQL injections always use bound parameters for dynamic conditions. Never try to secure a DQL query with addslashes() or similar functions. Additionally, the password should be stored in a secure hashing format, for example BCrypt.
