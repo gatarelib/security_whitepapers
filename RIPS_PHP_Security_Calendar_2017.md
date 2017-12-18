@@ -571,3 +571,25 @@ if (!$auth->isValid()) {
 This challenge is supposed to be a fixed version of day 13 but it introduces new vulnerabilities instead. The author tried to fix the DQL injection by applying addslashes() without substr() on the user name, and by hashing the password in line 13 using md5(). Besides the fact that md5 should not be used to hash passwords and that password hashes should not be compared this way, the second parameter is set to true. This returns the hash in binary format. The binary hash can contain ASCII characters that are interpreted by Doctrine. In this case an attacker could use the value 128 as the password, resulting in v�an���l���q��\ as hash. With the backslash at the end the single quote gets escaped leading to an injection. A possible payload could be ?user=%20OR%201=1-&passwd=128.
 
 To avoid DQL injections always use bound parameters for dynamic conditions. Never try to secure a DQL query with addslashes() or similar functions. Additionally, the password should be stored in a secure hashing format, for example BCrypt.
+
+
+### Day 18 - Sign
+Can you spot the vulnerability?
+
+```php
+class JWT {
+    public function verifyToken($data, $signature) {
+        $pub = openssl_pkey_get_public("file://pub_key.pem");
+        $signature = base64_decode($signature);
+        if (openssl_verify($data, $signature, $pub)) {
+            $object = json_decode(base64_decode($data));
+            $this->loginAsUser($object);
+        }
+    }
+}
+
+(new JWT())->verifyToken($_GET['d'], $_GET['s']);
+```
+
+This challenge contains a bug in the usage of the openssl_verify() function in line 5 that leads to an authentication bypass in line 7. The function has three return values: 1 if the signature is correct, 0 if the signature verification failed, and -1 if there was an error while performing the verification. So if an attacker generates a valid signature for the data using another algorithm than the one pub_key.pem is using, the openssl_verify() function returns -1 which is casted to true automatically. To avoid this problem use the type-safe comparison === to validate the return value of openssl_verify(), or consider using a different library for cryptography (https://paragonie.com/blog/2015/11/choosing-right-cryptography-library-for-your-php-project-guide).
+
