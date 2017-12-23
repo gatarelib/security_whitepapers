@@ -738,3 +738,52 @@ if (!isset($_COOKIE['hash'])) {
 The code snippet suffers from 4 vulnerabilities. First, the type-unsafe comparison operator is used in line 12 to compare the hashed password to a string. The string has the form of the scientific notation and as a result it is interpreted as “zero to the power of X”, which is zero. So if we are able to generate a zero-string for the hashed user input as well, the check compares zero to zero and succeeds. This hashes are called “Magic Hashes” and a Google search reveals that the MD5 hash of the value 240610708 results in the desired properties. The code snippet calculates the MD5 hash of the password twice though, so it is not possible to directly submit the value. Instead you have to exploit the second vulnerability: the first hash is calculated on the server side but stored in a cookie on the client side. Thus the value 240610708 simply has to be directly injected into the password cookie.
 
 There are two more vulnerabilities but they are not relevant for this challenge. First, the comparison of the hashes is vulnerable to timing attacks. To prevent this issue, the PHP function hash_equals() should be used for comparison. Second, the PHP function md5() is used to hash the password. The MD5 algorithm is considered broken and it was not designed for password hashing. Instead a secure password hashing algorithm like BCrypt should be used. It should be noted that passwords also should not be hard coded but separated into a configuration file.
+
+
+### Day 23 - Cookies
+Can you spot the vulnerability?
+
+```php
+class LDAPAuthenticator {
+    public $conn;
+    public $host;
+
+    function __construct($host = "localhost") {
+        $this->host = $host;
+    }
+
+    function authenticate($user, $pass) {
+        $result = [];
+        $this->conn = ldap_connect($this->host);    
+        ldap_set_option(
+            $this->conn,
+            LDAP_OPT_PROTOCOL_VERSION,
+            3
+        );
+        if (!@ldap_bind($this->conn))
+            return -1;
+        $user = ldap_escape($user, null, LDAP_ESCAPE_DN);
+        $pass = ldap_escape($pass, null, LDAP_ESCAPE_DN);
+        $result = ldap_search(
+            $this->conn,
+            "",
+            "(&(uid=$user)(userPassword=$pass))"
+        );
+        $result = ldap_get_entries($this->conn, $result);
+        return ($result["count"] > 0 ? 1 : 0);
+    }
+}
+
+if(isset($_GET["u"]) && isset($_GET["p"])) {
+    $ldap = new LDAPAuthenticator();
+    if ($ldap->authenticate($_GET["u"], $_GET["p"])) {
+        echo "You are now logged in!";
+    } else {
+        echo "Username or password unknown!";
+    }
+}
+```
+
+The LDAPAuthenticator class is prone to an LDAP injection in line 24. By injecting special characters into the username it is possible to alternate the result set of the LDAP query. Although the ldap_escape() function is used to sanitize the input in lines 19 and 20, a wrong flag has been passed to the sanitize-calls resulting in insufficient/incorrect sanitization. Therefore, in this particular example, the LDAP injection results in an unauthenticated adversary bypassing the authentication mechanism by injecting the asterisk-wildcard * character as username and password to successfully login as an arbitrary user.
+
+
