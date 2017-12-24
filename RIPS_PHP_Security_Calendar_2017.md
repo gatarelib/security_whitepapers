@@ -787,3 +787,18 @@ if(isset($_GET["u"]) && isset($_GET["p"])) {
 The LDAPAuthenticator class is prone to an LDAP injection in line 24. By injecting special characters into the username it is possible to alternate the result set of the LDAP query. Although the ldap_escape() function is used to sanitize the input in lines 19 and 20, a wrong flag has been passed to the sanitize-calls resulting in insufficient/incorrect sanitization. Therefore, in this particular example, the LDAP injection results in an unauthenticated adversary bypassing the authentication mechanism by injecting the asterisk-wildcard * character as username and password to successfully login as an arbitrary user.
 
 
+### Day 24 - Nutcracker
+Can you spot the vulnerability?
+
+```php
+@$GLOBALS=$GLOBALS{next}=next($GLOBALS{'GLOBALS'})
+[$GLOBALS['next']['next']=next($GLOBALS)['GLOBALS']]
+[$next['GLOBALS']=next($GLOBALS[GLOBALS]['GLOBALS'])
+[$next['next']]][$next['GLOBALS']=next($next['GLOBALS'])]
+[$GLOBALS[next]['next']($GLOBALS['next']{'GLOBALS'})]=
+next(neXt(${'next'}['next']));
+```
+
+This challenge consists of a code snippet that was created by one of our team members for the Hack.lu CTF Tournament. It makes heavy use of the next() function and the $GLOBALS array. The next() function moves the internal array pointer up by one. Combined with the $GLOBALS array this allows us to execute arbitrary code.
+The payload has to be split up into 2 segments: First, a PHP function to execute, passed in via $_COOKIE[‘GLOBALS’]. Second, parameters for the injected function, passed in via the file type of a sent file with the same name as the called PHP function. A more detailed write-up of the solution can be found here:
+https://github.com/ctfs/write-ups-2014/tree/master/hack-lu-ctf-2014/next-global-backdoor
